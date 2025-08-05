@@ -1,5 +1,6 @@
+import { ResizeController } from "@lit-labs/observers/resize-controller";
 import { mdiPlus } from "@mdi/js";
-import type { CSSResultGroup } from "lit";
+import type { CSSResultGroup, PropertyValues } from "lit";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators";
 import { classMap } from "lit/directives/class-map";
@@ -59,8 +60,30 @@ export class GridSection extends LitElement implements LovelaceSectionElement {
 
   @state() _dragging = false;
 
+  @state() private _isSingleColumn = false;
+
+  private _resizeController = new ResizeController(this, {
+    callback: () => {
+      this._checkSingleColumnLayout();
+      return false;
+    },
+  });
+
   public setConfig(config: LovelaceSectionConfig): void {
     this._config = config;
+  }
+
+  private _checkSingleColumnLayout(): void {
+    // Check if parent section view is in single column mode
+    const parentSection = this.closest(".section");
+    if (parentSection) {
+      const computedStyle = getComputedStyle(parentSection);
+      const maxColumnCount = parseInt(
+        computedStyle.getPropertyValue("--max-column-count") || "1",
+        10
+      );
+      this._isSingleColumn = maxColumnCount === 1;
+    }
   }
 
   private _cardConfigKeys = new WeakMap<LovelaceCardConfig, string>();
@@ -73,6 +96,22 @@ export class GridSection extends LitElement implements LovelaceSectionElement {
       this._cardConfigKeys.set(cardConfig, Math.random().toString());
     }
     return this._cardConfigKeys.get(cardConfig)!;
+  }
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.classList.toggle("single-column", this._isSingleColumn);
+  }
+
+  protected firstUpdated(): void {
+    this._checkSingleColumnLayout();
+  }
+
+  protected updated(changedProps: PropertyValues): void {
+    super.updated(changedProps);
+    if (changedProps.has("_isSingleColumn")) {
+      this.classList.toggle("single-column", this._isSingleColumn);
+    }
   }
 
   render() {
@@ -264,6 +303,29 @@ export class GridSection extends LitElement implements LovelaceSectionElement {
 
         .card.fit-rows {
           height: calc(
+            (var(--row-size, 1) * (var(--row-height) + var(--row-gap))) - var(
+                --row-gap
+              )
+          );
+        }
+
+        /* Apply auto height for single-column layouts */
+        /* Mobile viewports */
+        @media (max-width: 600px) {
+          .card.fit-rows {
+            height: auto;
+            min-height: calc(
+              (var(--row-size, 1) * (var(--row-height) + var(--row-gap))) - var(
+                  --row-gap
+                )
+            );
+          }
+        }
+
+        /* Single column mode class - applied via JavaScript */
+        :host(.single-column) .card.fit-rows {
+          height: auto;
+          min-height: calc(
             (var(--row-size, 1) * (var(--row-height) + var(--row-gap))) - var(
                 --row-gap
               )
