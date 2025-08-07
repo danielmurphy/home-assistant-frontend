@@ -108,12 +108,15 @@ export class GridSection extends LitElement implements LovelaceSectionElement {
           ${repeat(
             cardsConfig,
             (cardConfig) => this._getKey(cardConfig),
-            (_cardConfig, idx) => {
+            (cardConfig, idx) => {
               const card = this.cards![idx];
               card.layout = "grid";
               const gridOptions = card.getGridOptions();
 
               const { rows, columns } = computeCardGridSize(gridOptions);
+
+              // Camera feeds need flexible height due to unpredictable height calculations
+              const needsFlexibleHeight = this._isCameraCard(cardConfig);
 
               const cardPath: LovelaceCardPath = [
                 this.viewIndex!,
@@ -128,7 +131,9 @@ export class GridSection extends LitElement implements LovelaceSectionElement {
                     "--row-size": typeof rows === "number" ? rows : undefined,
                   })}
                   class="card ${classMap({
-                    "fit-rows": typeof rows === "number",
+                    "fit-rows":
+                      typeof rows === "number" && !needsFlexibleHeight,
+                    "auto-height": rows === "auto" || needsFlexibleHeight,
                     "full-width": columns === "full",
                   })}"
                   .sortableData=${cardPath}
@@ -209,6 +214,30 @@ export class GridSection extends LitElement implements LovelaceSectionElement {
     fireEvent(this, "ll-create-card", { suggested: ["tile", "heading"] });
   }
 
+  private _isCameraCard(cardConfig: LovelaceCardConfig): boolean {
+    if (!cardConfig || typeof cardConfig !== "object") {
+      return false;
+    }
+
+    // Direct picture-entity with any camera view
+    if (cardConfig.type === "picture-entity" && cardConfig.camera_view) {
+      return true;
+    }
+
+    // Nested grid containing camera feeds
+    if (cardConfig.type === "grid" && Array.isArray(cardConfig.cards)) {
+      return cardConfig.cards.some(
+        (nestedCard: any) =>
+          nestedCard &&
+          typeof nestedCard === "object" &&
+          nestedCard.type === "picture-entity" &&
+          nestedCard.camera_view
+      );
+    }
+
+    return false;
+  }
+
   static get styles(): CSSResultGroup {
     return [
       haStyle,
@@ -268,6 +297,12 @@ export class GridSection extends LitElement implements LovelaceSectionElement {
                 --row-gap
               )
           );
+        }
+
+        /* Cards with auto height use flexible sizing */
+        .card.auto-height {
+          height: auto;
+          min-height: var(--row-height);
         }
 
         .card.full-width {
